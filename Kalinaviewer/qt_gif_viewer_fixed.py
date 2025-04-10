@@ -8,9 +8,9 @@ It uses PyQt5 specifically for better compatibility across environments.
 
 import os
 import sys
-import glob
 import random
 from PIL import Image, ImageSequence
+import pkg_resources
 
 if 'QT_QPA_PLATFORM_PLUGIN_PATH' in os.environ:
     del os.environ['QT_QPA_PLATFORM_PLUGIN_PATH']
@@ -25,6 +25,17 @@ except ImportError:
     print("PyQt5 is required but not installed.")
     print("Install it with: pip install PyQt5")
     sys.exit(1)
+
+# Define the GIF files that will be embedded
+EMBEDDED_GIFS = [
+    'kalinalaying.webp',
+    'kalinamove.webp',
+    'kalinapick.webp',
+    'kalinasit.webp',
+    'kalinawait.webp',
+    'kalinawork1.webp',
+    'kalinawork2.webp'
+]
 
 class MenuWindow(QDialog):
     """Menu window with options to control the application"""
@@ -143,8 +154,7 @@ class TransparentGifViewer(QWidget):
         
         self.animation_error.connect(self.show_error)
         
-        self.gif_files = []
-        self.load_gif_files()
+        self.gif_files = EMBEDDED_GIFS
         
         # New variables for automatic mode
         self.auto_mode = False
@@ -165,20 +175,8 @@ class TransparentGifViewer(QWidget):
             self.load_current_gif()
             self.show()
         else:
-            print("No GIF or WebP files found in the current directory!")
+            print("No GIF files found in the embedded resources!")
             
-    def load_gif_files(self):
-        """Find all GIF and WebP files in the current directory"""
-        self.gif_files = glob.glob("*.gif") + glob.glob("*.webp")
-        print(f"Found {len(self.gif_files)} animation files: {self.gif_files}")
-        
-        # Find the "pick" GIF index
-        for i, filename in enumerate(self.gif_files):
-            if "pick" in filename.lower():
-                self.pick_gif_index = i
-                print(f"Found 'pick' GIF at index {i}: {filename}")
-                break
-    
     def crop_image(self, img):
         """Crop the top 30% of the image and shift up"""
         width, height = img.size
@@ -204,7 +202,16 @@ class TransparentGifViewer(QWidget):
         print(f"Loading: {current_file}")
         
         try:
-            img = Image.open(current_file)
+            # Load the GIF from embedded resources
+            if getattr(sys, 'frozen', False):
+                # Running in PyInstaller bundle
+                base_path = sys._MEIPASS
+            else:
+                # Running in normal Python environment
+                base_path = os.path.dirname(os.path.abspath(__file__))
+                
+            gif_path = os.path.join(base_path, current_file)
+            img = Image.open(gif_path)
             
             self.frames = []
             self.flipped_frames = []
