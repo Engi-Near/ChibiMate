@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
 #include <objidl.h>

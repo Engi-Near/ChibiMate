@@ -8,9 +8,8 @@ It uses PyQt5 specifically for better compatibility across environments.
 
 import os
 import sys
-import glob
 import random
-from PIL import Image, ImageSequence
+import pkg_resources
 
 if 'QT_QPA_PLATFORM_PLUGIN_PATH' in os.environ:
     del os.environ['QT_QPA_PLATFORM_PLUGIN_PATH']
@@ -19,12 +18,23 @@ try:
     from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout, 
                                 QPushButton, QMainWindow, QDialog, QGridLayout, 
                                 QDesktopWidget)
-    from PyQt5.QtCore import Qt, QTimer, QSize, QPoint, pyqtSignal
-    from PyQt5.QtGui import QPixmap, QImage, QKeyEvent, QMouseEvent, QTransform
+    from PyQt5.QtCore import Qt, QTimer, QSize, QPoint, pyqtSignal, QRect
+    from PyQt5.QtGui import QPixmap, QImage, QKeyEvent, QMouseEvent, QTransform, QMovie
 except ImportError:
     print("PyQt5 is required but not installed.")
     print("Install it with: pip install PyQt5")
     sys.exit(1)
+
+# Define the GIF files that will be embedded
+EMBEDDED_GIFS = [
+    'kalinalaying.webp',
+    'kalinamove.webp',
+    'kalinapick.webp',
+    'kalinasit.webp',
+    'kalinawait.webp',
+    'kalinawork1.webp',
+    'kalinawork2.webp'
+]
 
 class MenuWindow(QDialog):
     """Menu window with options to control the application"""
@@ -143,8 +153,7 @@ class TransparentGifViewer(QWidget):
         
         self.animation_error.connect(self.show_error)
         
-        self.gif_files = []
-        self.load_gif_files()
+        self.gif_files = EMBEDDED_GIFS
         
         # New variables for automatic mode
         self.auto_mode = False
@@ -165,33 +174,13 @@ class TransparentGifViewer(QWidget):
             self.load_current_gif()
             self.show()
         else:
-            print("No GIF or WebP files found in the current directory!")
+            print("No GIF files found in the embedded resources!")
             
-    def load_gif_files(self):
-        """Find all GIF and WebP files in the current directory"""
-        self.gif_files = glob.glob("*.gif") + glob.glob("*.webp")
-        print(f"Found {len(self.gif_files)} animation files: {self.gif_files}")
-        
-        # Find the "pick" GIF index
-        for i, filename in enumerate(self.gif_files):
-            if "pick" in filename.lower():
-                self.pick_gif_index = i
-                print(f"Found 'pick' GIF at index {i}: {filename}")
-                break
-    
     def crop_image(self, img):
         """Crop the top 30% of the image and shift up"""
-        width, height = img.size
+        width, height = img.size().width(), img.size().height()
         crop_top = int(height * 0.3)
-        return img.crop((0, crop_top, width, height))
-    
-    def pil_to_qt_image(self, pil_image):
-        """Convert PIL Image to QImage"""
-        if pil_image.mode != "RGBA":
-            pil_image = pil_image.convert("RGBA")
-            
-        data = pil_image.tobytes("raw", "RGBA")
-        return QImage(data, pil_image.width, pil_image.height, QImage.Format_RGBA8888)
+        return img.copy(QRect(0, crop_top, width, height - crop_top))
     
     def load_current_gif(self):
         """Load and display the current GIF"""
@@ -204,36 +193,42 @@ class TransparentGifViewer(QWidget):
         print(f"Loading: {current_file}")
         
         try:
-            img = Image.open(current_file)
+            # Load the GIF from embedded resources
+            if getattr(sys, 'frozen', False):
+                # Running in PyInstaller bundle
+                base_path = sys._MEIPASS
+            else:
+                # Running in normal Python environment
+                base_path = os.path.dirname(os.path.abspath(__file__))
+                
+            gif_path = os.path.join(base_path, current_file)
+            img = QMovie(gif_path)
             
             self.frames = []
             self.flipped_frames = []
             self.durations = []
             
-            frame_count = 0
-            for frame in ImageSequence.Iterator(img):
-                frame_count += 1
+            frame_count = img.frameCount()
             
-            img.seek(0)
+            img.jumpToFrame(0)
             
             for i in range(frame_count):
                 try:
-                    current = img.copy()
+                    current = img.currentImage()
                     
                     current = self.crop_image(current)
                     
-                    qt_image = self.pil_to_qt_image(current)
-                    pixmap = QPixmap.fromImage(qt_image)
+                    pixmap = QPixmap.fromImage(current)
                     
                     # Also create flipped version for left movement
                     flipped_pixmap = pixmap.transformed(QTransform().scale(-1, 1))
                     
                     self.frames.append(pixmap)
                     self.flipped_frames.append(flipped_pixmap)
-                    self.durations.append(img.info.get('duration', 100))
+                    self.durations.append(img.nextFrameDelay())
                     
                     if i < frame_count - 1:
-                        img.seek(i + 1)
+                        img.jumpToFrame(i + 1)
                 except EOFError:
                     break
             

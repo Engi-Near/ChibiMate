@@ -9,7 +9,6 @@ It uses PyQt5 specifically for better compatibility across environments.
 import os
 import sys
 import random
-from PIL import Image, ImageSequence
 import pkg_resources
 
 if 'QT_QPA_PLATFORM_PLUGIN_PATH' in os.environ:
@@ -19,8 +18,8 @@ try:
     from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QVBoxLayout, 
                                 QPushButton, QMainWindow, QDialog, QGridLayout, 
                                 QDesktopWidget)
-    from PyQt5.QtCore import Qt, QTimer, QSize, QPoint, pyqtSignal
-    from PyQt5.QtGui import QPixmap, QImage, QKeyEvent, QMouseEvent, QTransform
+    from PyQt5.QtCore import Qt, QTimer, QSize, QPoint, pyqtSignal, QRect
+    from PyQt5.QtGui import QPixmap, QImage, QKeyEvent, QMouseEvent, QTransform, QMovie
 except ImportError:
     print("PyQt5 is required but not installed.")
     print("Install it with: pip install PyQt5")
@@ -28,11 +27,11 @@ except ImportError:
 
 # Define the GIF files that will be embedded
 EMBEDDED_GIFS = [
-    'vectorlying.gif',
-    'vectorsit.gif',
-    'vectormove.gif',
-    'vectorpick.gif',
-    'vectorwait.gif'
+    'vectorlying.webp',
+    'vectorsit.webp',
+    'vectormove.webp',
+    'vectorpick.webp',
+    'vectorwait.webp'
 ]
 
 class MenuWindow(QDialog):
@@ -177,17 +176,9 @@ class TransparentGifViewer(QWidget):
             
     def crop_image(self, img):
         """Crop the top 30% of the image and shift up"""
-        width, height = img.size
+        width, height = img.size().width(), img.size().height()
         crop_top = int(height * 0.3)
-        return img.crop((0, crop_top, width, height))
-    
-    def pil_to_qt_image(self, pil_image):
-        """Convert PIL Image to QImage"""
-        if pil_image.mode != "RGBA":
-            pil_image = pil_image.convert("RGBA")
-            
-        data = pil_image.tobytes("raw", "RGBA")
-        return QImage(data, pil_image.width, pil_image.height, QImage.Format_RGBA8888)
+        return img.copy(QRect(0, crop_top, width, height - crop_top))
     
     def load_current_gif(self):
         """Load and display the current GIF"""
@@ -209,36 +200,33 @@ class TransparentGifViewer(QWidget):
                 base_path = os.path.dirname(os.path.abspath(__file__))
                 
             gif_path = os.path.join(base_path, current_file)
-            img = Image.open(gif_path)
+            img = QMovie(gif_path)
             
             self.frames = []
             self.flipped_frames = []
             self.durations = []
             
-            frame_count = 0
-            for frame in ImageSequence.Iterator(img):
-                frame_count += 1
+            frame_count = img.frameCount()
             
-            img.seek(0)
+            img.jumpToFrame(0)
             
             for i in range(frame_count):
                 try:
-                    current = img.copy()
+                    current = img.currentImage()
                     
                     current = self.crop_image(current)
                     
-                    qt_image = self.pil_to_qt_image(current)
-                    pixmap = QPixmap.fromImage(qt_image)
+                    pixmap = QPixmap.fromImage(current)
                     
                     # Also create flipped version for left movement
                     flipped_pixmap = pixmap.transformed(QTransform().scale(-1, 1))
                     
                     self.frames.append(pixmap)
                     self.flipped_frames.append(flipped_pixmap)
-                    self.durations.append(img.info.get('duration', 100))
+                    self.durations.append(img.nextFrameDelay())
                     
                     if i < frame_count - 1:
-                        img.seek(i + 1)
+                        img.jumpToFrame(i + 1)
                 except EOFError:
                     break
             
